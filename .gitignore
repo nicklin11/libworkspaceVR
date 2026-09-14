@@ -1,0 +1,37 @@
+# === Godot ===
+.godot/
+*.tmp
+export_presets.cfg
+*.translation
+monitor/
+*.tmp
+
+# === OS / editor junk ===
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# === Builds / binaries ===
+*.apk
+*.aab
+*.so
+*.dll
+*.bin
+bin/
+build/
+dist/
+
+# === Python ===
+__pycache__/
+*.pyc
+.venv/
+.ruff_cache/
+
+# === Env / secrets ===
+.env
+*.key
+*.pem
+
+# === Local briefings (not project artifacts) ===
+INITIAL.md
