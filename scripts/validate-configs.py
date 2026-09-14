@@ -5,6 +5,7 @@ Exit 0 if every file parses; exit 1 with a printed list of offenders.
 Included in CI (`config-lint`) because a broken GitHub Actions YAML fails
 *silently* (GitHub just reports "no workflow"), which is hard to notice.
 """
+
 import json
 import subprocess
 import sys
