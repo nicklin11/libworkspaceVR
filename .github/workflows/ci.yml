@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  shell-lint:
+    name: Shellcheck + shfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck & shfmt
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          curl -sSfL https://github.com/mvdan/sh/releases/download/v3.11.0/shfmt_v3.11.0_linux_amd64 -o /usr/local/bin/shfmt
+          chmod +x /usr/local/bin/shfmt
+
+      - name: shfmt format check (diff mode)
+        run: |
+          files=$(find host scripts -type f -name '*.sh' -print)
+          if [ -z "$files" ]; then
+            echo "No shell scripts found — nothing to format-check."
+            exit 0
+          fi
+          shfmt -d $files
+
+      - name: shellcheck
+        run: |
+          files=$(find host scripts -type f -name '*.sh' -print)
+          if [ -z "$files" ]; then
+            echo "No shell scripts found — nothing to shellcheck."
+            exit 0
+          fi
+          shellcheck --severity=warning $files
+
+      - name: Executable bit check
+        run: |
+          exit_code=0
+          for f in $(find host scripts -type f -name '*.sh' -print); do
+            if [ ! -x "$f" ]; then
+              echo "::error file=$f::Shell script is not executable (missing chmod +x)"
+              exit_code=1
+            fi
+          done
+          exit $exit_code
+
+  python-lint:
+    name: Python lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/ruff-action@v3
+        with:
+          version: "0.6.9"
+          args: "check ."
+      - uses: astral-sh/ruff-action@v3
+        with:
+          version: "0.6.9"
+          args: "format --check ."
+
+  config-lint:
+    name: YAML/JSON validity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate YAML & JSON
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-yaml
+          python3 scripts/validate-configs.py
+
+  repo-hygiene:
+    name: Repository hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for junk and oversized files
+        run: |
+          fail=0
+          # Junk files must never be tracked
+          junk=$(git ls-files | grep -E '(^|/)(\.DS_Store|Thumbs\.db)$|\.swp$|\.godot/' || true)
+          if [ -n "$junk" ]; then
+            echo "::error::Editor/OS junk files are tracked:"; echo "$junk"
+            fail=1
+          fi
+          # No APKs; no binaries over 10 MiB outside of documented exceptions
+          big=$(git ls-files | while read -r f; do
+            [ -f "$f" ] && [ "$(stat -c%s "$f")" -gt 10485760 ] && echo "$f"
+          done || true)
+          if [ -n "$big" ]; then
+            echo "::error::Files over 10 MiB are tracked:"; echo "$big"
+            fail=1
+          fi
+          apk=$(git ls-files '*.apk' '*.aab' || true)
+          if [ -n "$apk" ]; then
+            echo "::error::APK/AAB files must not be tracked:"; echo "$apk"
+            fail=1
+          fi
+          # .gitignore must exist and cover known Godot caches
+          [ -f .gitignore ] || { echo "::error::.gitignore missing"; fail=1; }
+          grep -q '^\.godot/' .gitignore || { echo "::error::.gitignore does not cover .godot/"; fail=1; }
+          exit $fail
